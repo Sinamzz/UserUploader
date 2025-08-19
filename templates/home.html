@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="card p-4">
+    <h1 class="mb-4">خوش آمدید، {{ user.username }} - داشبورد کاربر</h1>
+
+    <div class="mb-4">
+        <h2>میزان استفاده از فضای ذخیره‌سازی</h2>
+        <div class="progress mb-2">
+            <div class="progress-bar" role="progressbar" style="width: {{ percentage_used }}%;" aria-valuenow="{{ percentage_used }}" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        <p>{{ used_storage|filesizeformat }} / {{ allowed_storage|filesizeformat }} استفاده شده ({{ percentage_used|floatformat:2 }}%)</p>
+    </div>
+
+    <h2>آپلود فایل</h2>
+    <form method="post" enctype="multipart/form-data" class="mb-4">
+        {% csrf_token %}
+        <div class="mb-3">
+            عنوان :
+            {{ form.title }}
+        </div>
+        <div class="mb-3">
+            فایل :
+            {{ form.file }}
+        </div>
+        <button type="submit" class="btn btn-primary">آپلود</button>
+    </form>
+
+    <h2>فایل‌های شما</h2>
+    <ul class="list-group">
+        {% for file in files %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            {{ file.title }} ({{ file.size|filesizeformat }})
+            <div>
+                <a href="{% url 'download_file' file.id %}" class="btn btn-sm btn-primary me-2">دانلود</a>
+                <a href="{% url 'delete_file' file.id %}" class="btn btn-sm btn-danger">حذف</a>
+            </div>
+        </li>
+        {% empty %}
+        <li class="list-group-item">هنوز فایلی آپلود نشده است.</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}

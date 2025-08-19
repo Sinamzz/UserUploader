@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="card p-4">
+    <h1 class="mb-4">داشبورد ادمین</h1>
+
+    <h2>ایجاد کاربر جدید</h2>
+    <form method="post" class="mb-4">
+        {% csrf_token %}
+        <div class="mb-3">
+            نام کاربری :
+            {{ form.username }}
+        </div>
+        <div class="mb-3">
+            پسورد :
+            {{ form.password }}
+        </div>
+        <div class="mb-3">
+            {{ form.allowed_storage_gb.label_tag }}
+            {{ form.allowed_storage_gb }}
+        </div>
+        <button type="submit" class="btn btn-primary">ایجاد کاربر</button>
+    </form>
+
+    <h2>کاربران و فایل‌های آن‌ها</h2>
+    {% for data in user_data %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h3>کاربر: {{ data.user.username }} - فضای مجاز: {{ data.profile.allowed_storage|filesizeformat }} - استفاده شده: {{ data.used_storage|filesizeformat }}
+                    <a href="{% url 'admin_delete_user' data.user.id %}" class="btn btn-sm btn-danger float-end">حذف کاربر</a>
+                </h3>
+                <ul class="list-group">
+                    {% for file in data.files %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        {{ file.title }} ({{ file.size|filesizeformat }})
+                        <div>
+                            <a href="{% url 'download_file' file.id %}" class="btn btn-sm btn-primary me-2">دانلود</a>
+                            <a href="{% url 'admin_delete_file' file.id %}" class="btn btn-sm btn-danger">حذف</a>
+                        </div>
+                    </li>
+                    {% empty %}
+                    <li class="list-group-item">فایلی آپلود نشده است.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    {% empty %}
+        <p>هنوز کاربری وجود ندارد.</p>
+    {% endfor %}
+</div>
+{% endblock %}
