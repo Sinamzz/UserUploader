@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="card p-4">
+    <h1 class="mb-4">داشبورد مدیر رشته - رشته: {{ manager_field }}</h1>
+
+    <h2>فایل‌های شما</h2>
+    <ul class="list-group mb-4">
+        {% for file in own_files %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                {{ file.get_field_display }} ({{ file.size|filesizeformat }})
+                <div>
+                    <a href="{% url 'download_file' file.id %}" class="btn btn-sm btn-primary me-2">دانلود</a>
+                </div>
+            </li>
+        {% empty %}
+            <li class="list-group-item">شما فایلی آپلود نکرده‌اید.</li>
+        {% endfor %}
+    </ul>
+
+    <h2>فایل‌های کاربران بر اساس منطقه</h2>
+    {% for region_code, region_data in files_by_region.items %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h3>منطقه: {{ region_data.display_name }}</h3>
+                {% for data in region_data.users_files %}
+                    <h4>کاربر: {{ data.user.username }}</h4>
+                    <ul class="list-group">
+                        {% for file in data.files %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                {{ file.get_field_display }} ({{ file.size|filesizeformat }})
+                                <div>
+                                    <a href="{% url 'download_file' file.id %}" class="btn btn-sm btn-primary me-2">دانلود</a>
+                                    <a href="{% url 'field_manager_delete_file' file.id %}" class="btn btn-sm btn-danger">حذف</a>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% empty %}
+                    <p>فایلی برای این منطقه موجود نیست.</p>
+                {% endfor %}
+            </div>
+        </div>
+    {% empty %}
+        <p>فایلی در رشته شما موجود نیست.</p>
+    {% endfor %}
+</div>
+{% endblock %}

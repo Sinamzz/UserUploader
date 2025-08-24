@@ -5,42 +5,104 @@
 <div class="card p-4">
     <h1 class="mb-4">داشبورد ادمین</h1>
 
-    <h2>ایجاد کاربر جدید</h2>
+    <h2>تنظیم فاز پروژه</h2>
     <form method="post" class="mb-4">
         {% csrf_token %}
         <div class="mb-3">
-            نام کاربری :
+            <label for="phase_select" class="form-label">انتخاب فاز:</label>
+            <select name="phase_select" id="phase_select" class="form-select" style="width: auto; display: inline-block;">
+                <option value="1" {% if phase.is_phase_one %}selected{% endif %}>فاز اول</option>
+                <option value="2" {% if not phase.is_phase_one %}selected{% endif %}>فاز دوم</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary mt-2">ذخیره فاز</button>
+    </form>
+
+    <h2>ایجاد کاربر جدید</h2>
+    <form method="post" class="mb-4">
+        {% csrf_token %}
+        {% if messages %}
+            {% for message in messages %}
+                {% if message.tags == 'error' %}
+                    <div class="alert alert-danger" role="alert">
+                        {{ message }}
+                    </div>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+        <div class="mb-3">
+            {{ form.username.label_tag }}
             {{ form.username }}
+            {% if form.username.errors %}
+                <div class="text-danger">{{ form.username.errors }}</div>
+            {% endif %}
         </div>
         <div class="mb-3">
-            پسورد :
+            {{ form.password.label_tag }}
             {{ form.password }}
+            {% if form.password.errors %}
+                <div class="text-danger">{{ form.password.errors }}</div>
+            {% endif %}
         </div>
         <div class="mb-3">
+            {{ form.user_type.label_tag }}
+            {{ form.user_type }}
+            {% if form.user_type.errors %}
+                <div class="text-danger">{{ form.user_type.errors }}</div>
+            {% endif %}
+        </div>
+        <div class="mb-3">
+            {{ form.region.label_tag }}
+            {{ form.region }}
+            {% if form.region.errors %}
+                <div class="text-danger">{{ form.region.errors }}</div>
+            {% endif %}
+        </div>
+        <div class="mb-3" id="allowed_storage_field" style="display: none;">
             {{ form.allowed_storage_gb.label_tag }}
             {{ form.allowed_storage_gb }}
+            {% if form.allowed_storage_gb.errors %}
+                <div class="text-danger">{{ form.allowed_storage_gb.errors }}</div>
+            {% endif %}
         </div>
-        <button type="submit" class="btn btn-primary">ایجاد کاربر</button>
+        <div class="mb-3" id="field_field" style="display: none;">
+            {{ form.field.label_tag }}
+            {{ form.field }}
+            {% if form.field.errors %}
+                <div class="text-danger">{{ form.field.errors }}</div>
+            {% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary" name="create_user">ایجاد کاربر</button>
     </form>
 
     <h2>کاربران و فایل‌های آن‌ها</h2>
     {% for data in user_data %}
         <div class="card mb-3">
             <div class="card-body">
-                <h3>کاربر: {{ data.user.username }} - فضای مجاز: {{ data.profile.allowed_storage|filesizeformat }} - استفاده شده: {{ data.used_storage|filesizeformat }}
-                    <a href="{% url 'admin_delete_user' data.user.id %}" class="btn btn-sm btn-danger float-end">حذف کاربر</a>
+                <h3 style="direction: rtl; unicode-bidi: embed;">
+                    کاربر: <span>{{ data.user.username }}</span> - نوع: <span>{{ data.profile.get_user_type_display }}</span> - منطقه: <span>{{ data.profile.get_region_display }}</span>
+                    {% if data.profile.field %} - رشته: <span>{{ data.profile.get_field_display }}</span>{% endif %}
+                    {% if data.user.id %}
+                        <a href="{% url 'admin_delete_user' data.user.id %}" class="btn btn-sm btn-danger float-end">حذف کاربر</a>
+                    {% else %}
+                        <span class="text-danger">شناسه کاربر نامعتبر است</span>
+                    {% endif %}
                 </h3>
+                <p style="direction: rtl; unicode-bidi: embed; white-space: nowrap;">
+                    فضای استفاده‌شده: <span>{{ data.used_storage|filesizeformat }}</span> /
+                    <span>{{ data.profile.allowed_storage|filesizeformat }}</span>
+                </p>
                 <ul class="list-group">
                     {% for file in data.files %}
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        {{ file.title }} ({{ file.size|filesizeformat }})
-                        <div>
-                            <a href="{% url 'download_file' file.id %}" class="btn btn-sm btn-primary me-2">دانلود</a>
-                            <a href="{% url 'admin_delete_file' file.id %}" class="btn btn-sm btn-danger">حذف</a>
-                        </div>
-                    </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center" style="direction: rtl;">
+                            <span>{{ file.get_field_display }} ({{ file.size|filesizeformat }})</span>
+                            <div>
+                                <a href="{% url 'download_file' file.id %}" class="btn btn-sm btn-primary me-2">دانلود</a>
+                                <a href="{% url 'admin_delete_file' file.id %}" class="btn btn-sm btn-danger">حذف</a>
+                            </div>
+                        </li>
                     {% empty %}
-                    <li class="list-group-item">فایلی آپلود نشده است.</li>
+                        <li class="list-group-item">فایلی آپلود نشده است.</li>
                     {% endfor %}
                 </ul>
             </div>
@@ -49,4 +111,28 @@
         <p>هنوز کاربری وجود ندارد.</p>
     {% endfor %}
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const userTypeSelect = document.querySelector('#id_user_type');
+        const storageField = document.querySelector('#allowed_storage_field');
+        const fieldField = document.querySelector('#field_field');
+
+        function toggleFields() {
+            if (userTypeSelect.value === 'Normal') {
+                storageField.style.display = 'block';
+                fieldField.style.display = 'none';
+            } else if (userTypeSelect.value === 'FieldManager') {
+                storageField.style.display = 'block';
+                fieldField.style.display = 'block';
+            } else {
+                storageField.style.display = 'none';
+                fieldField.style.display = 'none';
+            }
+        }
+
+        userTypeSelect.addEventListener('change', toggleFields);
+        toggleFields();
+    });
+</script>
 {% endblock %}
