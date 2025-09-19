@@ -22,7 +22,7 @@ class FileUploadForm(forms.ModelForm):
 class CreateUserForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput, label='رمز عبور')
     allowed_storage_gb = forms.IntegerField(initial=50, label='فضای ذخیره‌سازی (گیگابایت)', required=False)
-    region = forms.ChoiceField(choices=UserProfile.REGION_CHOICES, label='منطقه')
+    region = forms.ChoiceField(choices=UserProfile.REGION_CHOICES, label='پژوهشسرا')
     user_type = forms.ChoiceField(choices=UserProfile.USER_TYPE_CHOICES, label='نوع کاربر')
     field = forms.ChoiceField(choices=UserProfile.FIELD_CHOICES, label='رشته', required=False)
 
@@ -35,7 +35,7 @@ class CreateUserForm(forms.ModelForm):
         cleaned_data = super().clean()
         user_type = cleaned_data.get('user_type')
         if not cleaned_data.get('region'):
-            self.add_error('region', 'انتخاب منطقه الزامی است.')
+            self.add_error('region', 'انتخاب پژوهشسرا الزامی است.')
         if user_type == 'Normal':
             if not cleaned_data.get('allowed_storage_gb'):
                 self.add_error('allowed_storage_gb', 'برای کاربر عادی، فضای ذخیره‌سازی الزامی است.')

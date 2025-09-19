@@ -125,3 +125,11 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+## Storage
+
+AWS_STORAGE_BUCKET_NAME = 'RazaviSrc'
+AWS_S3_ENDPOINT_URL = 'https://c589428.parspack.net'
+AWS_S3_FILE_OVERWRITE = False
+AWS_DEFAULT_ACL = None

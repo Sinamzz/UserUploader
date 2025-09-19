@@ -19,11 +19,11 @@
         {% endfor %}
     </ul>
 
-    <h2>فایل‌های کاربران بر اساس منطقه</h2>
+    <h2>فایل‌های کاربران بر اساس پژوهشسرا</h2>
     {% for region_code, region_data in files_by_region.items %}
         <div class="card mb-3">
             <div class="card-body">
-                <h3>منطقه: {{ region_data.display_name }}</h3>
+                <h3>پژوهشسرا: {{ region_data.display_name }}</h3>
                 {% for data in region_data.users_files %}
                     <h4>کاربر: {{ data.user.username }}</h4>
                     <ul class="list-group">
@@ -38,7 +38,7 @@
                         {% endfor %}
                     </ul>
                 {% empty %}
-                    <p>فایلی برای این منطقه موجود نیست.</p>
+                    <p>فایلی برای این پژوهشسرا موجود نیست.</p>
                 {% endfor %}
             </div>
         </div>

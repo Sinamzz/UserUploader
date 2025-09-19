@@ -80,7 +80,7 @@
         <div class="card mb-3">
             <div class="card-body">
                 <h3 style="direction: rtl; unicode-bidi: embed;">
-                    کاربر: <span>{{ data.user.username }}</span> - نوع: <span>{{ data.profile.get_user_type_display }}</span> - منطقه: <span>{{ data.profile.get_region_display }}</span>
+                    کاربر: <span>{{ data.user.username }}</span> - نوع: <span>{{ data.profile.get_user_type_display }}</span> - پژوهشسرا: <span>{{ data.profile.get_region_display }}</span>
                     {% if data.profile.field %} - رشته: <span>{{ data.profile.get_field_display }}</span>{% endif %}
                     {% if data.user.id %}
                         <a href="{% url 'admin_delete_user' data.user.id %}" class="btn btn-sm btn-danger float-end">حذف کاربر</a>
