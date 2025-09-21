@@ -10,7 +10,10 @@ import mimetypes
 import os
 from .forms import CreateUserForm
 from urllib.parse import quote
-
+import boto3
+from botocore.client import Config
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 
 def get_current_phase():
     phase = Phase.objects.first()
@@ -261,3 +264,29 @@ def field_manager_delete_file(request, file_id):
             pass
     file.delete()
     return redirect('field_manager_dashboard')
+
+S3_BUCKET_NAME = 'RazaviSrc'
+S3_ACCESS_KEY = '3pybWMXMRKvlYrJU'
+S3_SECRET_KEY = '1wPlGLzHQCj5hejQBHcYDRZx8yaDfNpF'
+S3_REGION = 'ir'
+S3_ENDPOINT = 'https://c589428.parspack.net'
+
+@csrf_exempt
+def get_presigned_url(request):
+    file_name = request.POST.get('file_name')
+    file_type = request.POST.get('file_type')
+
+    s3_client = boto3.client('s3',
+                             aws_access_key_id=S3_ACCESS_KEY,
+                             aws_secret_access_key=S3_SECRET_KEY,
+                             region_name=S3_REGION,
+                             endpoint_url=S3_ENDPOINT,
+                             config=Config(signature_version='s3v4'))
+
+    presigned_url = s3_client.generate_presigned_url('put_object',
+                                                     Params={'Bucket': S3_BUCKET_NAME,
+                                                             'Key': file_name,
+                                                             'ContentType': file_type},
+                                                     ExpiresIn=36000)
+
+    return JsonResponse({'presigned_url': presigned_url})

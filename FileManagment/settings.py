@@ -128,7 +128,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 ## Storage
-
+DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+AWS_ACCESS_KEY_ID = '3pybWMXMRKvlYrJU'
+AWS_SECRET_ACCESS_KEY = '1wPlGLzHQCj5hejQBHcYDRZx8yaDfNpF'
 AWS_STORAGE_BUCKET_NAME = 'RazaviSrc'
 AWS_S3_ENDPOINT_URL = 'https://c589428.parspack.net'
 AWS_S3_FILE_OVERWRITE = False

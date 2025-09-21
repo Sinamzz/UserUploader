@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import home, delete_file, admin_dashboard, admin_delete_file, admin_delete_user, download_file, \
-    field_manager_dashboard, field_manager_delete_file
+    field_manager_dashboard, field_manager_delete_file, get_presigned_url
 
 urlpatterns = [
     path('', home, name='home'),
@@ -10,5 +10,7 @@ urlpatterns = [
     path('admin-delete-user/<int:user_id>/', admin_delete_user, name='admin_delete_user'),
     path('download/<int:file_id>/', download_file, name='download_file'),
     path('field-manager-dashboard/', field_manager_dashboard, name='field_manager_dashboard'),
-    path('field-manager-delete/<int:file_id>/', field_manager_delete_file, name='field_manager_delete_file')
+    path('field-manager-delete/<int:file_id>/', field_manager_delete_file, name='field_manager_delete_file'),
+    path('get_presigned_url/', get_presigned_url, name='get_presigned_url'),
+
 ]

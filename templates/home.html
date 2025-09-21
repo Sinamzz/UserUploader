@@ -19,32 +19,33 @@
         </div>
 
         <h2>آپلود فایل</h2>
-        <form method="post" enctype="multipart/form-data" class="mb-4">
-    {% csrf_token %}
-    {% if form.errors %}
-        <div class="alert alert-danger">
-            {% for field in form %}
-                {% for error in field.errors %}
-                    <p>{{ error }}</p>
-                {% endfor %}
-            {% endfor %}
-            {% for error in form.non_field_errors %}
-                <p>{{ error }}</p>
-            {% endfor %}
-        </div>
-    {% endif %}
-    <div class="mb-3">
-        {{ form.field.label_tag }}
-        {{ form.field }}
-        {% if form.field.help_text %}
-            <small class="form-text text-muted">{{ form.field.help_text }}</small>
-        {% endif %}
-    </div>
-    <div class="mb-3">
-        {{ form.file.label_tag }}
-        {{ form.file }}
-    </div>
-    <button type="submit" class="btn btn-primary" >آپلود</button></form>
+        <form id="uploadForm" method="post" enctype="multipart/form-data" class="mb-4">
+            {% csrf_token %}
+            {% if form.errors %}
+                <div class="alert alert-danger">
+                    {% for field in form %}
+                        {% for error in field.errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    {% endfor %}
+                    {% for error in form.non_field_errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <div class="mb-3">
+                {{ form.field.label_tag }}
+                {{ form.field }}
+                {% if form.field.help_text %}
+                    <small class="form-text text-muted">{{ form.field.help_text }}</small>
+                {% endif %}
+            </div>
+            <div class="mb-3">
+                {{ form.file.label_tag }}
+                {{ form.file }}
+            </div>
+            <button type="button" id="uploadButton" class="btn btn-primary">آپلود</button>
+        </form>
     {% else %}
         <p>شما مدیر رشته هستید و در فاز دوم پروژه هستید. برای مشاهده فایل‌ها به <a href="{% url 'field_manager_dashboard' %}">داشبورد مدیر رشته</a> مراجعه کنید.</p>
     {% endif %}
@@ -66,4 +67,40 @@
         {% endfor %}
     </ul>
 </div>
+
+<script>
+document.getElementById('uploadButton').addEventListener('click', function() {
+    const fileInput = document.querySelector('input[type="file"]');
+    const file = fileInput.files[0];
+
+    if (file) {
+        // ارسال درخواست به سرور برای دریافت URL امضا شده
+        fetch('/get_presigned_url/', {
+            method: 'POST',
+            body: new URLSearchParams({
+                'file_name': file.name,
+                'file_type': file.type,
+            }),
+        }).then(response => response.json())
+          .then(data => {
+              const presignedUrl = data.presigned_url;
+
+              // آپلود فایل به پارس پک با استفاده از URL امضا شده
+              const formData = new FormData();
+              formData.append('file', file);
+
+              fetch(presignedUrl, {
+                  method: 'PUT',
+                  body: formData,
+              }).then(uploadResponse => {
+                  if (uploadResponse.ok) {
+                      alert("فایل با موفقیت آپلود شد!");
+                  } else {
+                      alert("آپلود فایل با شکست مواجه شد.");
+                  }
+              });
+          });
+    }
+});
+</script>
 {% endblock %}
