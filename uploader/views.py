@@ -1,5 +1,4 @@
 import uuid
-
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
@@ -7,17 +6,14 @@ from .models import UploadedFile, UserProfile, Phase
 from .forms import FileUploadForm, CreateUserForm
 from django.db.models import Sum
 from django.contrib import messages
-from django.http import FileResponse
-import mimetypes
-import os
-from .forms import CreateUserForm
-from urllib.parse import quote
-import boto3
-from botocore.client import Config
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
+import boto3
 from botocore.exceptions import ClientError
+from datetime import datetime
+
+
 def get_current_phase():
     phase = Phase.objects.first()
     return phase.is_phase_one if phase else True
@@ -35,25 +31,8 @@ def home(request):
     used_storage = UploadedFile.objects.filter(user=request.user).aggregate(total=Sum('size'))['total'] or 0
     allowed_storage = profile.allowed_storage
     percentage_used = (used_storage / allowed_storage * 100) if allowed_storage > 0 else 0
-
     files = UploadedFile.objects.filter(user=request.user)
-
-    if request.method == 'POST' and (
-            profile.user_type == 'Normal' or (profile.user_type == 'FieldManager' and is_phase_one)):
-        form = FileUploadForm(request.POST, request.FILES, user=request.user)
-        if form.is_valid():
-            new_file = form.save(commit=False)
-            new_file.user = request.user
-            existing_file = UploadedFile.objects.filter(user=request.user, field=new_file.field).exists()
-            if existing_file:
-                form.add_error('field', "شما قبلاً فایلی در این رشته آپلود کرده‌اید. ابتدا فایل قبلی را حذف کنید.")
-            elif used_storage + new_file.file.size > allowed_storage:
-                form.add_error(None, "آپلود از حد مجاز فضای ذخیره‌سازی شما فراتر می‌رود.")
-            else:
-                new_file.save()
-                return redirect('home')
-    else:
-        form = FileUploadForm(user=request.user)
+    form = FileUploadForm(user=request.user)
 
     context = {
         'form': form,
@@ -66,6 +45,78 @@ def home(request):
     return render(request, 'home.html', context)
 
 
+@csrf_exempt
+@login_required
+def save_file_metadata(request):
+    if request.method == 'POST':
+        file_key = request.POST.get('file_key')
+        field = request.POST.get('field')
+        size = request.POST.get('size')
+        profile = UserProfile.objects.get(user=request.user)
+        is_phase_one = get_current_phase()
+
+        if not (profile.user_type == 'Normal' or (profile.user_type == 'FieldManager' and is_phase_one)):
+            return JsonResponse({'error': 'شما اجازه آپلود ندارید'}, status=403)
+
+        used_storage = UploadedFile.objects.filter(user=request.user).aggregate(total=Sum('size'))['total'] or 0
+        try:
+            size = int(size)
+            if used_storage + size > profile.allowed_storage:
+                return JsonResponse({'error': 'آپلود از حد مجاز فضای ذخیره‌سازی شما فراتر می‌رود'}, status=400)
+        except ValueError:
+            return JsonResponse({'error': 'اندازه فایل نامعتبر است'}, status=400)
+
+        existing_file = UploadedFile.objects.filter(user=request.user, field=field).exists()
+        if existing_file:
+            return JsonResponse({'error': 'شما قبلاً فایلی در این رشته آپلود کرده‌اید'}, status=400)
+
+        try:
+            UploadedFile.objects.create(
+                user=request.user,
+                file_key=file_key,
+                field=field,
+                size=size
+            )
+            return JsonResponse({'success': True})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'error': 'Invalid method'}, status=405)
+
+
+@csrf_exempt
+@login_required
+def generate_upload_url(request):
+    if request.method == 'POST':
+        file_name = request.POST.get('file_name', f'upload_{uuid.uuid4()}')
+        # اضافه کردن مسیر به نام فایل
+        current_date = datetime.now().strftime('%Y/%m/%d')
+        file_key = f'uploads/{current_date}/{file_name}'
+        bucket_name = settings.AWS_STORAGE_BUCKET_NAME
+        endpoint_url = settings.AWS_S3_ENDPOINT_URL
+
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            endpoint_url=endpoint_url
+        )
+
+        try:
+            presigned_url = s3_client.generate_presigned_url(
+                'put_object',
+                Params={
+                    'Bucket': bucket_name,
+                    'Key': file_key,
+                    'ACL': 'private'
+                },
+                ExpiresIn=3600  # 1 ساعت
+            )
+            return JsonResponse({'upload_url': presigned_url, 'file_key': file_key})
+        except ClientError as e:
+            return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'error': 'Invalid method'}, status=405)
+
+
 @login_required
 def delete_file(request, file_id):
     profile = UserProfile.objects.get(user=request.user)
@@ -73,58 +124,43 @@ def delete_file(request, file_id):
     if not (profile.user_type == 'Normal' or (profile.user_type == 'FieldManager' and is_phase_one)):
         return redirect('home')
     file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
-    if file.file:
-        try:
-            file.file.delete()
-        except ValueError:
-            pass
+
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        endpoint_url=settings.AWS_S3_ENDPOINT_URL
+    )
+    try:
+        s3_client.delete_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=file.file_key)
+    except ClientError as e:
+        messages.error(request, f'خطا در حذف فایل از bucket: {str(e)}')
+
     file.delete()
+    messages.success(request, 'فایل با موفقیت حذف شد.')
     return redirect('home')
 
 
 @login_required
 @user_passes_test(lambda u: u.is_superuser)
 def admin_dashboard(request):
-    # دریافت یا ایجاد نمونه Phase
     phase, created = Phase.objects.get_or_create(id=1, defaults={'is_phase_one': True})
 
     if request.method == 'POST':
-        if 'phase_select' in request.POST:  # پردازش تغییر فاز
+        if 'phase_select' in request.POST:
             selected_phase = request.POST.get('phase_select')
-            if selected_phase == '1':  # فاز اول
-                phase.is_phase_one = True
-            elif selected_phase == '2':  # فاز دوم
-                phase.is_phase_one = False
+            phase.is_phase_one = selected_phase == '1'
             phase.save()
             messages.success(request, 'فاز پروژه با موفقیت به‌روزرسانی شد.')
             return redirect('admin_dashboard')
-        elif 'create_user' in request.POST:  # پردازش ایجاد کاربر
+        elif 'create_user' in request.POST:
             form = CreateUserForm(request.POST)
             if form.is_valid():
                 user = form.save()
-                # استفاده از get_or_create برای جلوگیری از خطای UNIQUE
-                profile, created = UserProfile.objects.get_or_create(
-                    user=user,
-                    defaults={
-                        'user_type': form.cleaned_data['user_type'],
-                        'region': form.cleaned_data['region'],
-                        'allowed_storage': form.cleaned_data.get('allowed_storage_gb', 0) * 1024 * 1024 * 1024,
-                        'field': form.cleaned_data.get('field')  # فقط برای FieldManager
-                    }
-                )
-                # اگر پروفایل جدید نباشد، آن را به‌روزرسانی کنید
-                if not created:
-                    profile.user_type = form.cleaned_data['user_type']
-                    profile.region = form.cleaned_data['region']
-                    profile.allowed_storage = form.cleaned_data.get('allowed_storage_gb', 0) * 1024 * 1024 * 1024
-                    profile.field = form.cleaned_data.get('field')
-                    profile.save()
-
                 messages.success(request, 'کاربر با موفقیت ایجاد شد.')
                 return redirect('admin_dashboard')
             else:
                 messages.error(request, 'خطا در ایجاد کاربر. لطفاً اطلاعات را بررسی کنید.')
-                # تعریف user_data برای زمانی که فرم نامعتبر است
                 user_data = []
                 for profile in UserProfile.objects.select_related('user').all():
                     if profile.user:
@@ -136,11 +172,10 @@ def admin_dashboard(request):
                 context = {
                     'phase': phase,
                     'user_data': user_data,
-                    'form': form  # فرم با خطاها به تمپلیت برگردانده می‌شود
+                    'form': form
                 }
                 return render(request, 'admin_dashboard.html', context)
 
-    # محاسبه اطلاعات کاربران برای حالت GET
     user_data = []
     for profile in UserProfile.objects.select_related('user').all():
         if profile.user:
@@ -161,12 +196,20 @@ def admin_delete_file(request, file_id):
     if not request.user.is_superuser:
         return redirect('home')
     file = get_object_or_404(UploadedFile, id=file_id)
-    if file.file:
-        try:
-            file.file.delete()
-        except ValueError:
-            pass
+
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        endpoint_url=settings.AWS_S3_ENDPOINT_URL
+    )
+    try:
+        s3_client.delete_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=file.file_key)
+    except ClientError as e:
+        messages.error(request, f'خطا در حذف فایل از bucket: {str(e)}')
+
     file.delete()
+    messages.success(request, 'فایل با موفقیت حذف شد.')
     return redirect('admin_dashboard')
 
 
@@ -177,12 +220,17 @@ def admin_delete_user(request, user_id):
     user = get_object_or_404(User, id=user_id)
     if not user.is_superuser:
         files = UploadedFile.objects.filter(user=user)
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            endpoint_url=settings.AWS_S3_ENDPOINT_URL
+        )
         for file in files:
-            if file.file:
-                try:
-                    file.file.delete()
-                except ValueError:
-                    pass
+            try:
+                s3_client.delete_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=file.file_key)
+            except ClientError as e:
+                messages.error(request, f'خطا در حذف فایل از bucket: {str(e)}')
             file.delete()
         user.delete()
         messages.success(request, 'کاربر و فایل‌هایش با موفقیت حذف شدند.')
@@ -199,22 +247,23 @@ def download_file(request, file_id):
 
     if not (request.user.is_superuser or file_obj.user == request.user or
             (profile.user_type == 'FieldManager' and not is_phase_one and file_obj.field == profile.field)):
-        return redirect('home')
+        return JsonResponse({'error': 'شما اجازه دانلود این فایل را ندارید'}, status=403)
 
-    file_path = file_obj.file.path
-    file_name = os.path.basename(file_path)
-    content_type, _ = mimetypes.guess_type(file_path)
-
-    if not content_type:
-        content_type = 'application/octet-stream'
-
-    encoded_file_name = quote(file_name)
-
-    # تنظیمات پاسخ برای دانلود
-    response = FileResponse(open(file_path, 'rb'), content_type=content_type)
-    response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{encoded_file_name}'
-
-    return response
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        endpoint_url=settings.AWS_S3_ENDPOINT_URL
+    )
+    try:
+        presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': settings.AWS_STORAGE_BUCKET_NAME, 'Key': file_obj.file_key},
+            ExpiresIn=3600
+        )
+        return JsonResponse({'download_url': presigned_url})
+    except ClientError as e:
+        return JsonResponse({'error': str(e)}, status=400)
 
 
 @login_required
@@ -260,41 +309,18 @@ def field_manager_delete_file(request, file_id):
     if profile.user_type != 'FieldManager' or is_phase_one:
         return redirect('home')
     file = get_object_or_404(UploadedFile, id=file_id, field=profile.field)
-    if file.file:
-        try:
-            file.file.delete()
-        except ValueError:
-            pass
+
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        endpoint_url=settings.AWS_S3_ENDPOINT_URL
+    )
+    try:
+        s3_client.delete_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=file.file_key)
+    except ClientError as e:
+        messages.error(request, f'خطا در حذف فایل از bucket: {str(e)}')
+
     file.delete()
+    messages.success(request, 'فایل با موفقیت حذف شد.')
     return redirect('field_manager_dashboard')
-
-
-
-@csrf_exempt
-def generate_upload_url(request):
-    if request.method == 'POST':
-        file_name = request.POST.get('file_name', f'upload_{uuid.uuid4()}.ext')
-        bucket_name = settings.AWS_STORAGE_BUCKET_NAME
-        endpoint_url = settings.AWS_S3_ENDPOINT_URL
-
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            endpoint_url=endpoint_url
-        )
-
-        try:
-            presigned_url = s3_client.generate_presigned_url(
-                'put_object',
-                Params={
-                    'Bucket': bucket_name,
-                    'Key': file_name,
-                    'ACL': 'private'
-                },
-                ExpiresIn=36000
-            )
-            return JsonResponse({'upload_url': presigned_url, 'file_key': file_name})
-        except ClientError as e:
-            return JsonResponse({'error': str(e)}, status=400)
-    return JsonResponse({'error': 'Invalid method'}, status=405)
