@@ -1,3 +1,5 @@
+import uuid
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
@@ -14,7 +16,8 @@ import boto3
 from botocore.client import Config
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-
+from django.conf import settings
+from botocore.exceptions import ClientError
 def get_current_phase():
     phase = Phase.objects.first()
     return phase.is_phase_one if phase else True
@@ -265,28 +268,33 @@ def field_manager_delete_file(request, file_id):
     file.delete()
     return redirect('field_manager_dashboard')
 
-S3_BUCKET_NAME = 'RazaviSrc'
-S3_ACCESS_KEY = '3pybWMXMRKvlYrJU'
-S3_SECRET_KEY = '1wPlGLzHQCj5hejQBHcYDRZx8yaDfNpF'
-S3_REGION = 'ir'
-S3_ENDPOINT = 'https://c589428.parspack.net'
+
 
 @csrf_exempt
-def get_presigned_url(request):
-    file_name = request.POST.get('file_name')
-    file_type = request.POST.get('file_type')
+def generate_upload_url(request):
+    if request.method == 'POST':
+        file_name = request.POST.get('file_name', f'upload_{uuid.uuid4()}.ext')
+        bucket_name = settings.AWS_STORAGE_BUCKET_NAME
+        endpoint_url = settings.AWS_S3_ENDPOINT_URL
 
-    s3_client = boto3.client('s3',
-                             aws_access_key_id=S3_ACCESS_KEY,
-                             aws_secret_access_key=S3_SECRET_KEY,
-                             region_name=S3_REGION,
-                             endpoint_url=S3_ENDPOINT,
-                             config=Config(signature_version='s3v4'))
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            endpoint_url=endpoint_url
+        )
 
-    presigned_url = s3_client.generate_presigned_url('put_object',
-                                                     Params={'Bucket': S3_BUCKET_NAME,
-                                                             'Key': file_name,
-                                                             'ContentType': file_type},
-                                                     ExpiresIn=36000)
-
-    return JsonResponse({'presigned_url': presigned_url})
+        try:
+            presigned_url = s3_client.generate_presigned_url(
+                'put_object',
+                Params={
+                    'Bucket': bucket_name,
+                    'Key': file_name,
+                    'ACL': 'private'
+                },
+                ExpiresIn=36000
+            )
+            return JsonResponse({'upload_url': presigned_url, 'file_key': file_name})
+        except ClientError as e:
+            return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'error': 'Invalid method'}, status=405)

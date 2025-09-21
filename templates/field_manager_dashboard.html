@@ -11,7 +11,7 @@
             <li class="list-group-item d-flex justify-content-between align-items-center">
                 {{ file.get_field_display }} ({{ file.size|filesizeformat }})
                 <div>
-                    <a href="{% url 'download_file' file.id %}" class="btn btn-sm btn-primary me-2">دانلود</a>
+                    <a href="#" class="btn btn-sm btn-primary me-2 download-btn" data-file-id="{{ file.id }}">دانلود</a>
                 </div>
             </li>
         {% empty %}
@@ -31,7 +31,7 @@
                             <li class="list-group-item d-flex justify-content-between align-items-center">
                                 {{ file.get_field_display }} ({{ file.size|filesizeformat }})
                                 <div>
-                                    <a href="{% url 'download_file' file.id %}" class="btn btn-sm btn-primary me-2">دانلود</a>
+                                    <a href="#" class="btn btn-sm btn-primary me-2 download-btn" data-file-id="{{ file.id }}">دانلود</a>
                                     <a href="{% url 'field_manager_delete_file' file.id %}" class="btn btn-sm btn-danger">حذف</a>
                                 </div>
                             </li>
@@ -46,4 +46,34 @@
         <p>فایلی در رشته شما موجود نیست.</p>
     {% endfor %}
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const downloadButtons = document.querySelectorAll('.download-btn');
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+    downloadButtons.forEach(button => {
+        button.addEventListener('click', async function(e) {
+            e.preventDefault();
+            const fileId = this.getAttribute('data-file-id');
+            try {
+                const response = await fetch(`{% url "generate_download_url" file_id="FILE_ID" %}`.replace('FILE_ID', fileId), {
+                    method: 'GET',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+                const data = await response.json();
+                if (data.download_url) {
+                    window.location.href = data.download_url; // دانلود مستقیم
+                } else {
+                    alert('خطا در دریافت لینک دانلود: ' + data.error);
+                }
+            } catch (error) {
+                alert('خطا: ' + error.message);
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

@@ -114,9 +114,6 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 # Media
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 
@@ -131,7 +128,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 AWS_ACCESS_KEY_ID = '3pybWMXMRKvlYrJU'
 AWS_SECRET_ACCESS_KEY = '1wPlGLzHQCj5hejQBHcYDRZx8yaDfNpF'
-AWS_STORAGE_BUCKET_NAME = 'RazaviSrc'
+AWS_STORAGE_BUCKET_NAME = 'c589428'
 AWS_S3_ENDPOINT_URL = 'https://c589428.parspack.net'
+AWS_S3_REGION_NAME = 'us-east-1'
 AWS_S3_FILE_OVERWRITE = False
-AWS_DEFAULT_ACL = None
+AWS_DEFAULT_ACL = 'private'
+MEDIA_URL = f'https://{AWS_S3_ENDPOINT_URL}/media/'
