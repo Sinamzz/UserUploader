@@ -102,14 +102,14 @@ def generate_upload_url(request):
         endpoint_url = settings.AWS_S3_ENDPOINT_URL
 
         s3_client = boto3.client('s3',
-                          endpoint_url='https://c589428.parspack.net',
+                          endpoint_url=endpoint_url,
                           region_name='us-east-1',
                           config=Config(signature_version='s3v4'),
-                          aws_access_key_id='3pybWMXMRKvlYrJU',
-                          aws_secret_access_key='1wPlGLzHQCj5hejQBHcYDRZx8yaDfNpF'
+                          aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                          aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY
                           )
 
-        response = s3_client.list_objects_v2(Bucket='c589428')
+        response = s3_client.list_objects_v2(Bucket=settings.AWS_STORAGE_BUCKET_NAME)
         print(response)
 
         try:
