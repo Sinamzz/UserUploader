@@ -14,11 +14,16 @@ class FileUploadForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if user:
             profile = UserProfile.objects.get(user=user)
-            # اگر مدیر رشته است، فقط رشته خودش را نشان بده
+            # اگر مدیر رشته است، باید اجازه دهد که رشته‌هایی که هنوز آپلود نشده‌اند، انتخاب شوند
             if profile.user_type == 'FieldManager':
-                self.fields['field'].choices = [(profile.field, dict(UserProfile.FIELD_CHOICES)[profile.field])]
-                self.fields['field'].initial = profile.field
-                self.fields['field'].disabled = True
+                # برای مدیر رشته، تمام رشته‌هایی که هنوز فایل برای آنها آپلود نشده را نشان بده
+                used_fields = UploadedFile.objects.filter(user=user).values_list('field', flat=True)
+                available_choices = [(code, name) for code, name in UserProfile.FIELD_CHOICES if code not in used_fields]
+                if available_choices:
+                    self.fields['field'].choices = available_choices
+                else:
+                    self.fields['field'].disabled = True
+                    self.fields['field'].help_text = "شما در تمام رشته‌ها فایل آپلود کرده‌اید. برای آپلود فایل جدید، ابتدا فایل‌های قبلی را حذف کنید."
             else:
                 # برای کاربر عادی، فقط رشته‌هایی که هنوز آپلود نشده‌اند
                 used_fields = UploadedFile.objects.filter(user=user).values_list('field', flat=True)
@@ -28,7 +33,6 @@ class FileUploadForm(forms.ModelForm):
                 else:
                     self.fields['field'].disabled = True
                     self.fields['field'].help_text = "شما در تمام رشته‌ها فایل آپلود کرده‌اید. برای آپلود فایل جدید، ابتدا فایل‌های قبلی را حذف کنید."
-
 class CreateUserForm(UserCreationForm):
     user_type = forms.ChoiceField(choices=UserProfile.USER_TYPE_CHOICES, label='نوع کاربر')
     region = forms.ChoiceField(choices=UserProfile.REGION_CHOICES, label='پژوهشسرا')

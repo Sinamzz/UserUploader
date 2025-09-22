@@ -1,4 +1,6 @@
 import uuid
+
+from botocore.config import Config
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
@@ -55,7 +57,12 @@ def save_file_metadata(request):
         profile = UserProfile.objects.get(user=request.user)
         is_phase_one = get_current_phase()
 
-        if not (profile.user_type == 'Normal' or (profile.user_type == 'FieldManager' and is_phase_one)):
+        # توی فاز دوم، هیچ‌کس نمی‌تونه آپلود کنه
+        if not is_phase_one:
+            return JsonResponse({'error': 'در فاز دوم، آپلود فایل غیرفعال است. فقط مشاهده و حذف امکان‌پذیر است.'}, status=403)
+
+        # توی فاز اول، فقط Normal و Field Manager می‌تونن آپلود کنن
+        if not (profile.user_type == 'Normal' or profile.user_type == 'FieldManager'):
             return JsonResponse({'error': 'شما اجازه آپلود ندارید'}, status=403)
 
         used_storage = UploadedFile.objects.filter(user=request.user).aggregate(total=Sum('size'))['total'] or 0
@@ -88,34 +95,43 @@ def save_file_metadata(request):
 def generate_upload_url(request):
     if request.method == 'POST':
         file_name = request.POST.get('file_name', f'upload_{uuid.uuid4()}')
-        # اضافه کردن مسیر به نام فایل
+        file_type = request.POST.get('file_type', 'application/octet-stream')
         current_date = datetime.now().strftime('%Y/%m/%d')
-        file_key = f'uploads/{current_date}/{file_name}'
+        file_key = file_name
         bucket_name = settings.AWS_STORAGE_BUCKET_NAME
         endpoint_url = settings.AWS_S3_ENDPOINT_URL
 
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            endpoint_url=endpoint_url
-        )
+        s3_client = boto3.client('s3',
+                          endpoint_url='https://c589428.parspack.net',
+                          region_name='us-east-1',
+                          config=Config(signature_version='s3v4'),
+                          aws_access_key_id='3pybWMXMRKvlYrJU',
+                          aws_secret_access_key='1wPlGLzHQCj5hejQBHcYDRZx8yaDfNpF'
+                          )
+
+        response = s3_client.list_objects_v2(Bucket='c589428')
+        print(response)
 
         try:
+            print("*********")
+            print(file_name)
+            print("*********")
             presigned_url = s3_client.generate_presigned_url(
                 'put_object',
                 Params={
-                    'Bucket': bucket_name,
+                    'Bucket': "c589428",
                     'Key': file_key,
-                    'ACL': 'private'
                 },
-                ExpiresIn=3600  # 1 ساعت
+                ExpiresIn=3600
             )
-            return JsonResponse({'upload_url': presigned_url, 'file_key': file_key})
+            return JsonResponse({
+                'upload_url': presigned_url,
+                'file_key': file_key,
+                'content_type': file_type
+            })
         except ClientError as e:
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Invalid method'}, status=405)
-
 
 @login_required
 def delete_file(request, file_id):
@@ -324,3 +340,4 @@ def field_manager_delete_file(request, file_id):
     file.delete()
     messages.success(request, 'فایل با موفقیت حذف شد.')
     return redirect('field_manager_dashboard')
+

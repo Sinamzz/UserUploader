@@ -19,7 +19,7 @@
         </div>
 
         <h2>آپلود فایل</h2>
-        <form id="uploadForm" enctype="multipart/form-data" class="mb-4">
+        <form id="uploadForm" class="mb-4">
             {% csrf_token %}
             {% if form.errors %}
                 <div class="alert alert-danger">
@@ -41,10 +41,14 @@
                 {% endif %}
             </div>
             <div class="mb-3">
-                {{ form.file.label_tag }}
-                {{ form.file }}
+                <label for="fileInput" class="form-label">فایل</label>
+                <input type="file" id="fileInput" name="file" class="form-control">
             </div>
             <button type="button" id="uploadButton" class="btn btn-primary">آپلود</button>
+            <div id="uploadSpinner" class="spinner-border text-primary mt-2" role="status" style="display: none;">
+                <span class="visually-hidden">در حال آپلود...</span>
+            </div>
+            <div id="uploadMessage" class="mt-2" style="display: none;"></div>
         </form>
     {% else %}
         <p>شما مدیر رشته هستید و در فاز دوم پروژه هستید. برای مشاهده فایل‌ها به <a href="{% url 'field_manager_dashboard' %}">داشبورد مدیر رشته</a> مراجعه کنید.</p>
@@ -72,11 +76,13 @@
 document.addEventListener('DOMContentLoaded', function() {
     const uploadButton = document.getElementById('uploadButton');
     const uploadForm = document.getElementById('uploadForm');
+    const uploadSpinner = document.getElementById('uploadSpinner');
+    const uploadMessage = document.getElementById('uploadMessage');
     const downloadButtons = document.querySelectorAll('.download-btn');
 
     // آپلود فایل
     uploadButton.addEventListener('click', async function() {
-        const fileInput = uploadForm.querySelector('input[type="file"]');
+        const fileInput = document.querySelector('#fileInput');
         const file = fileInput.files[0];
         const fieldSelect = uploadForm.querySelector('#id_field').value;
         const csrfToken = uploadForm.querySelector('[name=csrfmiddlewaretoken]').value;
@@ -86,7 +92,11 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // درخواست presigned URL
+        // نمایش spinner
+        uploadSpinner.style.display = 'block';
+        uploadMessage.style.display = 'none';
+        uploadButton.disabled = true;
+
         try {
             const response = await fetch('{% url "generate_upload_url" %}', {
                 method: 'POST',
@@ -96,50 +106,57 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 body: new URLSearchParams({
                     'file_name': file.name,
-                    'file_type': file.type
+                    'file_type': file.type || 'application/octet-stream'
                 })
             });
             const data = await response.json();
             if (data.error) {
-                alert('خطا در دریافت URL: ' + data.error);
-                return;
+                throw new Error('خطا در دریافت URL آپلود: ' + data.error);
             }
 
-            // آپلود مستقیم به bucket
             const uploadResponse = await fetch(data.upload_url, {
                 method: 'PUT',
                 body: file,
                 headers: {
-                    'Content-Type': file.type
+                    'Content-Type': file.type || 'application/octet-stream'
                 }
             });
 
-            if (uploadResponse.ok) {
-                // ذخیره metadata فایل در دیتابیس
-                const saveResponse = await fetch('{% url "save_file_metadata" %}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: new URLSearchParams({
-                        'file_key': data.file_key,
-                        'field': fieldSelect,
-                        'size': file.size
-                    })
-                });
-                const saveData = await saveResponse.json();
-                if (saveData.success) {
-                    alert('فایل با موفقیت آپلود شد!');
-                    window.location.reload(); // رفرش برای نمایش فایل جدید
-                } else {
-                    alert('خطا در ذخیره فایل: ' + saveData.error);
-                }
-            } else {
-                alert('خطا در آپلود فایل به bucket.');
+            if (!uploadResponse.ok) {
+                const errorText = await uploadResponse.text();
+                throw new Error('خطا در آپلود فایل به bucket: ' + uploadResponse.status + ' ' + uploadResponse.statusText + ' - ' + errorText);
             }
+
+            const saveResponse = await fetch('{% url "save_file_metadata" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken
+                },
+                body: new URLSearchParams({
+                    'file_key': data.file_key,
+                    'field': fieldSelect,
+                    'size': file.size
+                })
+            });
+            const saveData = await saveResponse.json();
+            if (!saveData.success) {
+                throw new Error('خطا در ذخیره فایل: ' + saveData.error);
+            }
+
+            uploadMessage.textContent = 'فایل با موفقیت آپلود شد!';
+            uploadMessage.className = 'text-success mt-2';
+            uploadMessage.style.display = 'block';
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000); // رفرش بعد از 1 ثانیه
         } catch (error) {
-            alert('خطا: ' + error.message);
+            uploadMessage.textContent = 'خطا: ' + error.message;
+            uploadMessage.className = 'text-danger mt-2';
+            uploadMessage.style.display = 'block';
+        } finally {
+            uploadSpinner.style.display = 'none';
+            uploadButton.disabled = false;
         }
     });
 
@@ -149,7 +166,7 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             const fileId = this.getAttribute('data-file-id');
             try {
-                const response = await fetch(`{% url "generate_download_url" file_id="FILE_ID" %}`.replace('FILE_ID', fileId), {
+                const response = await fetch(`/download/${fileId}/`, {
                     method: 'GET',
                     headers: {
                         'X-CSRFToken': uploadForm.querySelector('[name=csrfmiddlewaretoken]').value
@@ -157,7 +174,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 const data = await response.json();
                 if (data.download_url) {
-                    window.location.href = data.download_url; // دانلود مستقیم
+                    window.location.href = data.download_url;
                 } else {
                     alert('خطا در دریافت لینک دانلود: ' + data.error);
                 }
